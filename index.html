@@ -28,7 +28,10 @@ nav button{flex:1 1 100%}
 }
 </style>
 <script>
-// Garantia: showTab existe antes do HTML usar
+/* LZ-string (compressão para links) */
+function compressToURL(str){return btoa(unescape(encodeURIComponent(str))).replace(/=+$/,'');}
+function decompressFromURL(str){return decodeURIComponent(escape(atob(str)));}
+
 function showTab(id){
  document.querySelectorAll('section').forEach(s=>s.classList.remove('active'));
  const el=document.getElementById(id); if(el) el.classList.add('active');
@@ -39,6 +42,7 @@ function showTab(id){
 <header>Ficha de Personagem</header>
 <nav>
 <button onclick="showTab('descricao')">Descrição</button>
+<button onclick="showTab('personagens')">Personagens</button>
 <button onclick="showTab('atributos')">Atributos</button>
 <button onclick="showTab('historia')">História</button>
 <button onclick="showTab('combate')">Combate</button>
@@ -50,28 +54,39 @@ function showTab(id){
 
 <section id="descricao" class="active">
 <div class="card">
-<label>Imagem da Ficha</label>
-<input type="text" placeholder="URL da imagem ou gif">
+<button onclick="salvarPersonagem()">Salvar Personagem</button>
+<button onclick="gerarLinkFicha()">Gerar link da ficha</button>
 </div>
 <div class="card">
-<label>Nome</label><input>
-<label>Raça / Espécie</label><input>
-<label>Classe / Profissão</label><input>
-<label>Idade</label><input>
-<label>Sexo</label><input>
-<label>Altura</label><input>
-<label>Afiliamento Moral</label><input>
+<label>Imagem da Ficha</label>
+<input id="imgFicha" type="text" placeholder="URL da imagem ou gif">
+</div>
+<div class="card">
+<label>Nome</label><input id="nome">
+<label>Raça / Espécie</label><input id="raca">
+<label>Classe / Profissão</label><input id="classe">
+<label>Idade</label><input id="idade">
+<label>Sexo</label><input id="sexo">
+<label>Altura</label><input id="altura">
+<label>Afiliamento Moral</label><input id="moral">
 </div>
 <div class="card">
 <button onclick="exportarJSON()">Exportar ficha (JSON)</button>
-<input type="file" id="importJSON" accept="application/json" onchange="importarJSON(event)">
+<input type="file" accept="application/json" onchange="importarJSON(event)">
+</div>
+</section>
+
+<section id="personagens">
+<div class="card">
+<b>Personagens Salvos</b>
+<div id="listaPersonagens"></div>
 </div>
 </section>
 
 <section id="atributos"></section>
 
 <section id="historia">
-<textarea rows="10" placeholder="História do personagem"></textarea>
+<textarea id="historiaTxt" rows="10" placeholder="História do personagem"></textarea>
 </section>
 
 <section id="combate">
@@ -165,37 +180,34 @@ function updateBars(){
 }
 setInterval(updateBars,200);
 
-function exportarJSON(){
+function gerarLinkFicha(){
  const data={};
  data.inputs=[...document.querySelectorAll('input,textarea')].map(i=>({id:i.id,value:i.value}));
  data.itens=itensLista.innerHTML;
  data.habilidades=habLista.innerHTML;
- const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
- const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ficha.json';a.click();
+ const json=JSON.stringify(data);
+ const encoded=compressToURL(json);
+ const url=location.origin+location.pathname+'#'+encoded;
+ navigator.clipboard.writeText(url);
+ alert('Link compacto copiado!');
 }
 
 function importarJSON(e){
-const file=e.target.files[0];
-if(!file) return;
-const reader=new FileReader();
-reader.onload=()=>{
- try{
-  const data=JSON.parse(reader.result);
-  if(data.inputs){
-   data.inputs.forEach(i=>{
-    const el=document.getElementById(i.id);
-    if(el) el.value=i.value;
-   });
+ const file=e.target.files[0];
+ if(!file)return;
+ const reader=new FileReader();
+ reader.onload=function(){
+  let data;
+  try{data=JSON.parse(reader.result);}catch(err){alert('Arquivo JSON inválido');return;}
+  if(Array.isArray(data.inputs)){
+   data.inputs.forEach(obj=>{if(!obj.id)return;const el=document.getElementById(obj.id);if(el)el.value=obj.value;});
   }
-  if(data.itens!==undefined) itensLista.innerHTML=data.itens;
-  if(data.habilidades!==undefined) habLista.innerHTML=data.habilidades;
+  if(typeof data.itens==='string')itensLista.innerHTML=data.itens;
+  if(typeof data.habilidades==='string')habLista.innerHTML=data.habilidades;
   updateBars();
-  log.innerHTML+='<div>Ficha importada com sucesso.</div>';
- }catch(err){
-  alert('Arquivo JSON inválido');
- }
-};
-reader.readAsText(file);
+  log.innerHTML+='<div>Ficha importada com sucesso</div>';
+ };
+ reader.readAsText(file);
 }
 
 function salvarLocal(){
@@ -208,12 +220,78 @@ function salvarLocal(){
 function carregarLocal(){
  const raw=localStorage.getItem('fichaRPG');if(!raw)return;
  const d=JSON.parse(raw);
- d.inputs.forEach(i=>{const el=document.getElementById(i.id);if(el)el.value=i.value});
+ if(Array.isArray(d.inputs))d.inputs.forEach(i=>{const el=document.getElementById(i.id);if(el)el.value=i.value});
  itensLista.innerHTML=d.itens||'';
  habLista.innerHTML=d.habilidades||'';
+ updateBars();
 }
 setInterval(salvarLocal,2000);
-window.addEventListener('load',carregarLocal);
+window.addEventListener('load',()=>{
+ carregarLocal();
+ carregarPersonagens();
+ if(location.hash.length>1){
+ try{
+  const json=decompressFromURL(location.hash.substring(1));
+  const data=JSON.parse(json);
+  if(Array.isArray(data.inputs)){
+   data.inputs.forEach(o=>{const el=document.getElementById(o.id);if(el)el.value=o.value});
+  }
+  if(data.itens)itensLista.innerHTML=data.itens;
+  if(data.habilidades)habLista.innerHTML=data.habilidades;
+  updateBars();
+  log.innerHTML+='<div>Ficha carregada via link</div>';
+ }catch(e){console.warn('Link inválido');}
+}
+   if(data.itens)itensLista.innerHTML=data.itens;
+   if(data.habilidades)habLista.innerHTML=data.habilidades;
+   updateBars();
+   log.innerHTML+='<div>Ficha carregada via link</div>';
+  }catch(e){console.warn('Link inválido');}
+ }
+});carregarPersonagens();});
+function salvarPersonagem(){
+ const nome=document.querySelector('#descricao input')?.value||'Personagem';
+ const img=document.querySelector('#descricao input[type="text"]')?.value||'';
+ const data={nome,imagem:img};
+ data.inputs=[...document.querySelectorAll('input,textarea')].map(i=>({id:i.id,value:i.value}));
+ data.itens=itensLista.innerHTML;
+ data.habilidades=habLista.innerHTML;
+ const lista=JSON.parse(localStorage.getItem('personagensRPG')||'[]');
+ lista.push(data);
+ localStorage.setItem('personagensRPG',JSON.stringify(lista));
+ carregarPersonagens();
+ alert('Personagem salvo!');
+}
+
+function carregarPersonagens(){
+ const listaDiv=document.getElementById('listaPersonagens');
+ if(!listaDiv)return;
+ listaDiv.innerHTML='';
+ const lista=JSON.parse(localStorage.getItem('personagensRPG')||'[]');
+ lista.forEach((p,i)=>{
+  const d=document.createElement('div');d.className='item';
+  d.innerHTML=`${p.imagem?`<img src="${p.imagem}" width="50"><br>`:''}<b>${p.nome}</b><br><button onclick="carregarPersonagem(${i})">Carregar</button> <button onclick="excluirPersonagem(${i})">Excluir</button>`;
+  listaDiv.appendChild(d);
+ });
+}
+
+function carregarPersonagem(i){
+ const lista=JSON.parse(localStorage.getItem('personagensRPG')||'[]');
+ const d=lista[i];
+ if(!d)return;
+ d.inputs.forEach(o=>{const el=document.getElementById(o.id);if(el)el.value=o.value});
+ itensLista.innerHTML=d.itens||'';
+ habLista.innerHTML=d.habilidades||'';
+ updateBars();
+ showTab('descricao');
+}
+
+function excluirPersonagem(i){
+ const lista=JSON.parse(localStorage.getItem('personagensRPG')||'[]');
+ lista.splice(i,1);
+ localStorage.setItem('personagensRPG',JSON.stringify(lista));
+ carregarPersonagens();
+}
 </script>
 </body>
 </html>
