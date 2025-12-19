@@ -175,14 +175,27 @@ function exportarJSON(){
 }
 
 function importarJSON(e){
- const file=e.target.files[0];if(!file)return;
- const r=new FileReader();
- r.onload=()=>{const d=JSON.parse(r.result);
-  d.inputs.forEach(i=>{const el=document.getElementById(i.id);if(el)el.value=i.value});
-  itensLista.innerHTML=d.itens||'';
-  habLista.innerHTML=d.habilidades||'';
- };
- r.readAsText(file);
+const file=e.target.files[0];
+if(!file) return;
+const reader=new FileReader();
+reader.onload=()=>{
+ try{
+  const data=JSON.parse(reader.result);
+  if(data.inputs){
+   data.inputs.forEach(i=>{
+    const el=document.getElementById(i.id);
+    if(el) el.value=i.value;
+   });
+  }
+  if(data.itens!==undefined) itensLista.innerHTML=data.itens;
+  if(data.habilidades!==undefined) habLista.innerHTML=data.habilidades;
+  updateBars();
+  log.innerHTML+='<div>Ficha importada com sucesso.</div>';
+ }catch(err){
+  alert('Arquivo JSON inválido');
+ }
+};
+reader.readAsText(file);
 }
 
 function salvarLocal(){
